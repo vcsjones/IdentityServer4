@@ -132,7 +132,7 @@ namespace IdentityServer4.UnitTests.Extensions
         {
             IServiceCollection services = new ServiceCollection();
             IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
-            X509Certificate2 certificate = TestCert.LoadCertificate("brainpoolP256r1.pfx");
+            X509Certificate2 certificate = TestCert.Load("brainpoolP256r1.pfx");
             var exception = Assert.Throws<InvalidOperationException>(() => {
                 identityServerBuilder.AddSigningCredential(certificate);
             });
@@ -147,7 +147,7 @@ namespace IdentityServer4.UnitTests.Extensions
         {
             IServiceCollection services = new ServiceCollection();
             IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
-            X509Certificate2 certificate = TestCert.LoadCertificate(certificateName);
+            X509Certificate2 certificate = TestCert.Load(certificateName);
             identityServerBuilder.AddSigningCredential(certificate);
         }
 

@@ -21,9 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="idsvrtest.pfx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Certificates\*.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -34,9 +31,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\IdentityServer4.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Certificates\" />
   </ItemGroup>
 </Project>

@@ -9,9 +9,9 @@ namespace IdentityServer4.IntegrationTests.Common
 {
     internal static class TestCert
     {
-        public static X509Certificate2 Load()
+        public static X509Certificate2 Load(string name = "idsvrtest.pfx")
         {
-            var cert = Path.Combine(System.AppContext.BaseDirectory, "idsvrtest.pfx");
+            var cert = Path.Combine(System.AppContext.BaseDirectory, "Certificates", name);
             return new X509Certificate2(cert, "idsrv3test");
         }
     }
