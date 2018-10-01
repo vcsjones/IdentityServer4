@@ -31,12 +31,12 @@ namespace Microsoft.Extensions.DependencyInjection
         public static IIdentityServerBuilder AddSigningCredential(this IIdentityServerBuilder builder, SigningCredentials credential)
         {
             // todo dom
-            if (!(credential.Key is AsymmetricSecurityKey
-                || credential.Key is JsonWebKey && ((JsonWebKey)credential.Key).HasPrivateKey))
+            if (!(credential.Key is AsymmetricSecurityKey || credential.Key is JsonWebKey jwk && jwk.HasPrivateKey))
             //&& !credential.Key.IsSupportedAlgorithm(SecurityAlgorithms.RsaSha256Signature))
             {
                 throw new InvalidOperationException("Signing key is not asymmetric");
             }
+
             builder.Services.AddSingleton<ISigningCredentialStore>(new DefaultSigningCredentialsStore(credential));
             builder.Services.AddSingleton<IValidationKeysStore>(new DefaultValidationKeysStore(new[] { credential.Key }));
 
@@ -51,6 +51,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
         /// <exception cref="InvalidOperationException">X509 certificate does not have a private key.</exception>
+        /// <exception cref="InvalidOperationException">ECDSA key is not P-256, P-384, or P-521.</exception>
         public static IIdentityServerBuilder AddSigningCredential(this IIdentityServerBuilder builder, X509Certificate2 certificate)
         {
             if (certificate == null) throw new ArgumentNullException(nameof(certificate));
@@ -60,8 +61,18 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new InvalidOperationException("X509 certificate does not have a private key.");
             }
 
-            var credential = new SigningCredentials(new X509SecurityKey(certificate), "RS256");
-            return builder.AddSigningCredential(credential);
+            if (certificate.GetECDsaPrivateKey() is ECDsa ecdsa)
+            {
+                ValidateECDsaCurve(ecdsa);
+                var algorithm = JwaFromECDsaSize(ecdsa.KeySize);
+                var credential = new SigningCredentials(new X509SecurityKey(certificate), algorithm);
+                return builder.AddSigningCredential(credential);
+            }
+            else
+            {
+                var credential = new SigningCredentials(new X509SecurityKey(certificate), "RS256");
+                return builder.AddSigningCredential(credential);
+            }
         }
 
         /// <summary>
@@ -95,6 +106,26 @@ namespace Microsoft.Extensions.DependencyInjection
             }
 
             var credential = new SigningCredentials(rsaKey, "RS256");
+            return builder.AddSigningCredential(credential);
+        }
+
+        /// <summary>
+        /// Sets the signing credential.
+        /// </summary>
+        /// <param name="builder">The builder.</param>
+        /// <param name="ecdsaKey">The ECDSA key.</param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException">ECDSA key does not have a private key.</exception>
+        /// <exception cref="InvalidOperationException">ECDSA key is not P-256, P-384, or P-521.</exception>
+        public static IIdentityServerBuilder AddSigningCredential(this IIdentityServerBuilder builder, ECDsaSecurityKey ecdsaKey)
+        {
+            if (ecdsaKey.PrivateKeyStatus == PrivateKeyStatus.DoesNotExist)
+            {
+                throw new InvalidOperationException("ECDSA key does not have a private key.");
+            }
+            ValidateECDsaCurve(ecdsaKey.ECDsa);
+            var algorithm = JwaFromECDsaSize(ecdsaKey.KeySize);
+            var credential = new SigningCredentials(ecdsaKey, algorithm);
             return builder.AddSigningCredential(credential);
         }
 
@@ -162,6 +193,31 @@ namespace Microsoft.Extensions.DependencyInjection
         }
 
         /// <summary>
+        /// Creates a new ECDSA security key.
+        /// </summary>
+        /// <param name="parameters">The parameters.</param>
+        /// <param name="id">The identifier.</param>
+        /// <returns></returns>
+        /// <exception cref="PlatformNotSupportedException">The platform does not support importing from ECDSA parameters.</exception>
+        public static ECDsaSecurityKey CreateECDsaSecurityKey(ECParameters parameters, string id)
+        {
+            var ecdsa = ECDsa.Create();
+            switch (ecdsa)
+            {
+                case ECDsaCng cng:
+                    cng.ImportParameters(parameters);
+                    break;
+                case ECDsaOpenSsl ossl:
+                    ossl.ImportParameters(parameters);
+                    break;
+                default:
+                    throw new PlatformNotSupportedException();
+            }
+            ValidateECDsaCurve(ecdsa);
+            return new ECDsaSecurityKey(ecdsa) { KeyId = id };
+        }
+
+        /// <summary>
         /// Creates a new RSA security key.
         /// </summary>
         /// <returns></returns>
@@ -185,6 +241,22 @@ namespace Microsoft.Extensions.DependencyInjection
             }
 
             key.KeyId = CryptoRandom.CreateUniqueId(16);
+            return key;
+        }
+
+        /// <summary>
+        /// Create a new ECDSA security key.
+        /// </summary>
+        /// <returns></returns>
+        public static ECDsaSecurityKey CreateECDsaSecurityKey()
+        {
+            var ecdsa = ECDsa.Create();
+            ecdsa.KeySize = 256;
+            ValidateECDsaCurve(ecdsa);
+            var key = new ECDsaSecurityKey(ecdsa)
+            {
+                KeyId = CryptoRandom.CreateUniqueId(16)
+            };
             return key;
         }
 
@@ -261,6 +333,21 @@ namespace Microsoft.Extensions.DependencyInjection
             return certificate;
         }
 
+        private static string JwaFromECDsaSize(int size)
+        {
+            switch (size)
+            {
+                case 256:
+                    return "ES256";
+                case 384:
+                    return "ES384";
+                case 521:
+                    return "ES512";
+                default:
+                    throw new InvalidOperationException("Invalid ECDSA key size.");
+            }
+        }
+
         // used for serialization to temporary RSA key
         private class TemporaryRsaKey
         {
@@ -277,6 +364,25 @@ namespace Microsoft.Extensions.DependencyInjection
                 property.Ignored = false;
 
                 return property;
+            }
+        }
+
+        // Validate the ECDSA curve to prevent invalid curve attacks and ensure we are using a NIST curve.
+        private static void ValidateECDsaCurve(ECDsa ecdsa)
+        {
+            var curve = ecdsa.ExportParameters(false).Curve;
+            curve.Validate();
+            if (!curve.IsNamed)
+            {
+                throw new InvalidOperationException("Unnamed ECDSA curves are not supported.");
+            }
+            if (
+                curve.Oid.FriendlyName != ECCurve.NamedCurves.nistP256.Oid.FriendlyName &&
+                curve.Oid.FriendlyName != ECCurve.NamedCurves.nistP384.Oid.FriendlyName &&
+                curve.Oid.FriendlyName != ECCurve.NamedCurves.nistP521.Oid.FriendlyName
+            )
+            {
+                throw new InvalidOperationException("NIST P-256, P-384, and P-521 curves are only supported for ECDSA.");
             }
         }
     }

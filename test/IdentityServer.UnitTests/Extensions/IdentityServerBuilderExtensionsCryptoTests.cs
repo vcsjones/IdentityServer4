@@ -1,18 +1,21 @@
-﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
+// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 
 using IdentityServer4.Configuration;
+using IdentityServer4.UnitTests.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using System;
 using System.IO;
+using System.Security.Cryptography.X509Certificates;
 using Xunit;
 
 namespace IdentityServer4.UnitTests.Extensions
 {
     public class IdentityServerBuilderExtensionsCryptoTests
     {
+
         [Fact]
         public void AddSigningCredential_with_json_web_key_containing_asymmetric_key_should_succeed()
         {
@@ -56,6 +59,96 @@ namespace IdentityServer4.UnitTests.Extensions
             JsonWebKey jsonWebKey = new JsonWebKey(json);
             SigningCredentials credentials = new SigningCredentials(jsonWebKey, jsonWebKey.Alg);
             Assert.Throws<InvalidOperationException>(() => identityServerBuilder.AddSigningCredential(credentials));
+        }
+
+        [Fact]
+        public void AddSigningCredential_with_json_web_key_ecdsa_nistP256_should_succeed()
+        {
+            IServiceCollection services = new ServiceCollection();
+            IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
+
+            String json =
+            @"{
+                ""alg"" : ""ES256"",
+                ""kty"" : ""EC"",
+                ""use"" : ""sig"",
+                ""crv"" : ""P-256"",
+                ""d"" : ""oAjf1PFB0ySHJJceZqno6r6LknnYmaL48LVyNnwFiyo"",
+                ""x"" : ""0P2AoPh_fSK_W7-78zdx0iZmGRmEYe25FSiIM8YBGkg"",
+                ""y"" : ""kZJgfvCcptgCgMojXzq3ZkTTFWUaOz0_F-vIekk8iPg""
+            }";
+
+            JsonWebKey jsonWebKey = new JsonWebKey(json);
+            SigningCredentials credentials = new SigningCredentials(jsonWebKey, jsonWebKey.Alg);
+            identityServerBuilder.AddSigningCredential(credentials);
+        }
+
+        [Fact]
+        public void AddSigningCredential_with_json_web_key_ecdsa_nistP384_should_succeed()
+        {
+            IServiceCollection services = new ServiceCollection();
+            IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
+
+            String json =
+            @"{
+                ""alg"" : ""ES384"",
+                ""kty"" : ""EC"",
+                ""use"" : ""sig"",
+                ""crv"" : ""P-384"",
+                ""d"" : ""W3IIJN_QcZPbvLpnv3nGYLCG4eA14Q07bETJSyJ2j85S8K9pY6JWmZAlKk3SnMc1"",
+                ""x"" : ""2WzN2ODrPj-fitccLClhkQe8lgsKU7EKpACLq6tj7RhS6Mei8F33I3VErZpnk8Qd"",
+                ""y"" : ""tNz7nNmN48KZTwuFQ9YmFnvM6Wvxjpk3gaSLK9wU9zUOxNKtgaLKj1QUDW4_NH8Q""
+            }";
+
+            JsonWebKey jsonWebKey = new JsonWebKey(json);
+            SigningCredentials credentials = new SigningCredentials(jsonWebKey, jsonWebKey.Alg);
+            identityServerBuilder.AddSigningCredential(credentials);
+        }
+
+        [Fact]
+        public void AddSigningCredential_with_json_web_key_ecdsa_nistP521_should_succeed()
+        {
+            IServiceCollection services = new ServiceCollection();
+            IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
+
+            String json =
+            @"{
+                ""alg"" : ""ES512"",
+                ""kty"" : ""EC"",
+                ""use"" : ""sig"",
+                ""crv"" : ""P-521"",
+                ""d"" : ""Aeky1OkS1KCAdvhjKtTg6Z3NAe8f2Y__Ejf0fkPoeElHLvHKASGMZYo2YMKfaU6tOl8CUZ0LlVykYfhWOWvpf5Fr"",
+                ""x"" : ""AOb-4KVL6edrYD1H0fjII23B9shcb86eKpJNgbJDEU1FYCADyEl9n1mTOuvIXFsnyeueVJDFuv4vX_sr8ueVjTQ7"",
+                ""y"" : ""AcDjVuSujpmfrEEv0RIXfdXiI5w9QztR1io4rfB5F4QPXthE159HweKPSjic-nabiI9MBPDMDPjt9Yve3OEj5B1e""
+            }";
+
+            JsonWebKey jsonWebKey = new JsonWebKey(json);
+            SigningCredentials credentials = new SigningCredentials(jsonWebKey, jsonWebKey.Alg);
+            identityServerBuilder.AddSigningCredential(credentials);
+        }
+
+        [Fact]
+        public void AddSigningCredential_with_certificate_brainpoolp256r1_should_fail()
+        {
+            IServiceCollection services = new ServiceCollection();
+            IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
+            X509Certificate2 certificate = TestCert.LoadCertificate("brainpoolP256r1.pfx");
+            var exception = Assert.Throws<InvalidOperationException>(() => {
+                identityServerBuilder.AddSigningCredential(certificate);
+            });
+            Assert.Contains("NIST", exception.Message);
+        }
+
+        [Theory]
+        [InlineData("nistP256.pfx")]
+        [InlineData("nistP384.pfx")]
+        [InlineData("nistP521.pfx")]
+        public void AddSigningCredential_with_certificate_nist_curves_should_succeed(string certificateName)
+        {
+            IServiceCollection services = new ServiceCollection();
+            IIdentityServerBuilder identityServerBuilder = new IdentityServerBuilder(services);
+            X509Certificate2 certificate = TestCert.LoadCertificate(certificateName);
+            identityServerBuilder.AddSigningCredential(certificate);
         }
 
         [Fact]
